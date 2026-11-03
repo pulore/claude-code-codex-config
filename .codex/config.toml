@@ -1,0 +1,16 @@
+default_permissions = "repo"
+
+[permissions.repo]
+description = "Workspace writes, no .env reads, Claude Code files read-only"
+extends = ":workspace"
+
+[permissions.repo.filesystem]
+glob_scan_max_depth = 4
+
+[permissions.repo.filesystem.":workspace_roots"]
+"**/.env" = "deny"
+"**/.env.*" = "deny"
+".claude" = "read"
+".mcp.json" = "read"
+"CLAUDE.md" = "read"
+"AGENTS.md" = "read"

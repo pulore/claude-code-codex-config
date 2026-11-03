@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)/.agents/hooks/guard-bash.sh\"",
+            "statusMessage": "Checking shell command"
+          }
+        ]
+      }
+    ]
+  }
+}
