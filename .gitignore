@@ -1,0 +1,13 @@
+# Secrets. The same patterns that agents are denied in .claude/settings.json
+# and .codex/config.toml.
+.env
+.env.*
+
+# Personal files. Each tool reads them, but they don't belong in the repo.
+CLAUDE.local.md
+AGENTS.override.md
+.claude/settings.local.json
+
+# Some global gitignores exclude .agents, which holds the shared skills and
+# hook. This keeps it in the repo.
+!.agents/
