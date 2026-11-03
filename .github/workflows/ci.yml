@@ -1,0 +1,51 @@
+# Lints the shell scripts, validates the JSON and TOML config, checks the
+# skills symlink and AGENTS.md, and runs the hook tests. Neither agent is
+# installed or started, so no secrets or logins are needed.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shellcheck
+        run: shellcheck .agents/hooks/guard-bash.sh scripts/*.sh
+
+      - name: Validate JSON
+        run: |
+          for f in .claude/settings.json .codex/hooks.json; do
+            jq empty "$f"
+            echo "valid JSON: $f"
+          done
+
+      - name: Validate TOML
+        run: python3 -c 'import sys, tomllib; tomllib.load(open(sys.argv[1], "rb")); print("valid TOML:", sys.argv[1])' .codex/config.toml
+
+      - name: Check the skills symlink
+        run: |
+          test -L .claude/skills
+          test "$(readlink .claude/skills)" = "../.agents/skills"
+          ls .claude/skills/*/SKILL.md
+
+      # Codex stops reading project instructions at 32 KiB, and it doesn't
+      # expand imports, so an @ line would reach it as plain text.
+      - name: Check AGENTS.md
+        run: |
+          size=$(wc -c < AGENTS.md)
+          echo "AGENTS.md is $size bytes"
+          test "$size" -le 32768
+          if grep -n '^@' AGENTS.md; then
+            echo "AGENTS.md has an import line. Write the rule out instead."
+            exit 1
+          fi
+
+      - name: Test the hook
+        run: scripts/test-hook.sh
