@@ -45,11 +45,11 @@ Keep skill frontmatter to `name` and `description`, so a skill behaves the same 
 
 Each tool protects its own config, and neither protects the other's. In Codex's workspace-write sandbox an agent can rewrite .claude/settings.json and .mcp.json without asking. In accept-edits mode, Claude Code changes .codex/ and AGENTS.md without a prompt. So a prompt injection that reaches either agent can rewrite the other's config.
 
-- **`.codex/config.toml`** defines a permissions profile called `repo` and makes it the default. It extends the built-in `:workspace` profile and denies reads of `.env` and `.env.*` at any depth. It also makes `.claude`, `.mcp.json`, `CLAUDE.md` and `AGENTS.md` read-only. Codex already keeps `.codex`, `.agents` and `.git` read-only, and network access stays off.
+- **`.codex/config.toml`** defines a permissions profile called `repo` and makes it the default. It extends the built-in `:workspace` profile and denies reads of `.env` and `.env.*` files. How deep that reaches depends on the platform: on Linux, WSL and native Windows it stops at `glob_scan_max_depth`, as described under [Scope and security notes](#scope-and-security-notes). It also makes `.claude`, `.mcp.json`, `CLAUDE.md` and `AGENTS.md` read-only. Codex already keeps `.codex`, `.agents` and `.git` read-only, and network access stays off.
 - **`.claude/settings.json`** has three parts:
   - **Deny rules:** reading .env files, and editing Codex's config, the hook, `.mcp.json` and the settings file itself.
   - **Ask rules:** edits to AGENTS.md, CLAUDE.md and skills, and `git push`. Bypass-permissions mode is disabled.
-  - **The sandbox:** it blocks writes to `.codex`, `.agents`, `.claude` and `.mcp.json`, and allows network access only to registry.npmjs.org. Deny rules only cover Claude's own file tools and simple commands like `cat .env`. A `grep -r` that never names the file gets past them, and the sandbox is what stops it. `failIfUnavailable` makes Claude refuse to start without the sandbox, rather than run without it after a warning. `allowUnsandboxedCommands: false` stops a failed command from being retried outside it.
+  - **The sandbox:** it blocks writes to `.codex`, `.agents`, `.claude` and `.mcp.json`, and allows network access only to registry.npmjs.org. Deny rules only cover Claude's own file tools and simple commands like `cat .env`. A `grep -r` that never names the file gets past them, so the sandbox has to stop it. The sandbox's own `denyRead` list names only the root `.env`. Claude also adds the `Read` deny rules to it, but the sandbox ignores their glob patterns on Linux, as the scope notes describe. `failIfUnavailable` makes Claude refuse to start without the sandbox, rather than run without it after a warning. `allowUnsandboxedCommands: false` stops a failed command from being retried outside it.
 - **`.codex/rules/default.rules`** decides which commands may run outside Codex's sandbox. `git push` asks first, and starting another `codex` or `claude` session is forbidden. The `match` and `not_match` lists are tests that Codex runs when it loads the file.
 
 ### One hook for both tools
@@ -62,7 +62,9 @@ Both tools send a PreToolUse event before a shell command, with the command in `
 
 The last two checks come from a real prompt-injection payload, which told Codex to start a child `codex exec --dangerously-bypass-approvals-and-sandbox` and told Claude to change its API base URL. The hook only ever denies. Codex parses "ask" from a hook but doesn't support it yet: it marks the hook as failed and runs the command anyway. The hook needs jq.
 
-`scripts/test-hook.sh` feeds the hook fake events and checks the exact JSON it prints. CI runs it on every push and pull request. CI also runs shellcheck, validates the JSON and TOML files, checks the skills symlink and the size of AGENTS.md, and runs `scripts/test-link-skills.sh`.
+It only reads the command's text. A command that reads a .env file without naming one, such as `grep -r API_KEY .` or `cat .e*`, gets past it. Only the sandboxes can stop those, within the limits under [Scope and security notes](#scope-and-security-notes).
+
+`scripts/test-hook.sh` feeds the hook fake events and checks the exact JSON it prints, including for those two commands that it lets through. CI runs it on every push and pull request. CI also runs shellcheck, validates the JSON and TOML files, checks the skills symlink and the size of AGENTS.md, and runs `scripts/test-link-skills.sh`.
 
 ## Setup
 
@@ -125,11 +127,13 @@ Older docs and releases use `codex sandbox linux --permissions-profile`. Use `co
 
 ## Scope and security notes
 
-- **The hook is a second layer.** It's a string match, behind the sandboxes. A command that reads a .env file without naming it gets past the hook, and the sandboxes are what stop it.
+- **The hook is a second layer.** It's a string match, behind the sandboxes. A command that reads a .env file without naming it, such as `grep -r API_KEY .`, gets past the hook, so only the sandboxes can stop it, with the limits below.
 - **The `.env.*` patterns cover `.env.example` too**, in the deny rules, the hook and `.gitignore`. If agents should read an example file, give it a name like `env.example`.
 - **The .env deny covers every process in the sandbox.** A dev server that loads .env fails there too, so start those yourself.
 - **Command rules are prefix matches in both tools.** `git -C . push` matches neither `Bash(git push *)` nor the Codex push rule. Use these rules to cut down on prompts, and rely on the sandbox for anything you need blocked.
-- **Globs are weaker on Linux.** Claude Code's sandbox ignores glob patterns in Read and Edit rules there, and `claude doctor` warns about `Read(.env.*)`. Codex expands deny globs when each sandboxed command starts, so a process that's already running can read a .env created after it started.
+- **Codex's .env deny has a depth limit on Linux, WSL and native Windows.** There, Codex finds the files that match a deny glob by scanning the repo when each sandboxed command starts, and `glob_scan_max_depth` bounds that scan. With `glob_scan_max_depth = 4`, as set here, our Linux test with Codex CLI 0.166.0 denied `.env` and `.env.*` files up to three directories below the root, such as `a/b/c/.env`, while `cat` and `grep -r` could both read `a/b/c/d/.env`. With 8, Codex denied every depth we tried, down to six directories below the root. Raise it to cover your deepest .env file. OpenAI's docs say a deeper scan adds work before each command starts. On macOS the same profile denied every depth we tried, and OpenAI describes the scan limit only for Linux, WSL and native Windows. We haven't tested WSL or Windows.
+- **On those platforms the scan also misses new files.** A file created after a sandboxed command starts isn't in that command's scan, so a process that's already running, such as a dev server or a watcher, can read a .env created after it started.
+- **Claude Code's sandbox ignores globs on Linux.** It drops the glob patterns in Read and Edit rules there, and `claude doctor` warns about `Read(.env.*)`. So on Linux a command such as `grep -r` that never names a `.env.*` file can read it, and the hook doesn't stop that either.
 - **Path syntax:**
   - In the Codex profile, read entries must be exact paths or a directory ending in `/**`. Other globs fail with "only supports deny access".
   - In Claude Code, path rules must use `Read(...)` or `Edit(...)`. Claude accepts `Write(...)` path rules but never matches them.

@@ -2,7 +2,9 @@
 # Feeds .agents/hooks/guard-bash.sh the PreToolUse event that Claude Code and
 # Codex both send for a shell command, and checks the exact output: a deny
 # decision for each command it should block, and nothing at all for each
-# command it should let through. Needs jq.
+# command it lets through. The hook only reads the command's text, so a few
+# of the commands it lets through read a .env file without naming one. They
+# keep that limit tested. Needs jq.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -69,6 +71,11 @@ expect_deny 'codex -c openai_base_url=http://localhost:8080' "$url_reason"
 expect_allow 'cat .envrc'
 expect_allow 'npm test'
 expect_allow 'git status'
+
+# These read .env files without naming one, so the hook can't see them. Only
+# the sandboxes can stop them, within the limits in the README.
+expect_allow 'grep -r API_KEY .'
+expect_allow 'cat .e*'
 
 # An event with no command passes through untouched.
 check "allow  (no command)" '{"tool_name":"Bash","tool_input":{}}' ""
