@@ -1,6 +1,6 @@
 # Lints the shell scripts, validates the JSON and TOML config, checks the
-# skills symlink and AGENTS.md, and runs the hook tests. Neither agent is
-# installed or started, so no secrets or logins are needed.
+# skills symlink and AGENTS.md, and runs the hook and link-skills tests.
+# Neither agent is installed or started, so no secrets or logins are needed.
 name: CI
 
 on:
@@ -49,3 +49,6 @@ jobs:
 
       - name: Test the hook
         run: scripts/test-hook.sh
+
+      - name: Test link-skills
+        run: scripts/test-link-skills.sh

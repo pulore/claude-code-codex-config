@@ -18,6 +18,7 @@ CLAUDE.md                     imports AGENTS.md, plus notes for Claude Code only
 .agents/hooks/guard-bash.sh   the shared PreToolUse hook
 scripts/link-skills.sh        creates the .claude/skills symlink
 scripts/test-hook.sh          tests the hook
+scripts/test-link-skills.sh   tests link-skills.sh
 .github/workflows/ci.yml      runs the checks on every push and pull request
 ```
 
@@ -30,7 +31,13 @@ AGENTS.md is the one file both tools read, so the build commands and conventions
 
 ### Skills: one directory and a symlink
 
-Codex loads skills from .agents/skills, and Claude Code loads them from .claude/skills. The real files live in .agents/skills, and .claude/skills is a symlink to it, so both tools list the same skills. `scripts/link-skills.sh` creates the link. If .claude/skills is already a real directory, the script moves its skills into .agents/skills first. It's safe to run twice.
+Codex loads skills from .agents/skills, and Claude Code loads them from .claude/skills. The real files live in .agents/skills, and .claude/skills is a symlink to it, so both tools list the same skills. `scripts/link-skills.sh` creates the link. If .claude/skills is already a real directory, the script moves its skills into .agents/skills first:
+
+- A skill that's in only one of the two directories, or identical in both, moves across.
+- If a skill is in both with different contents, the script lists every such skill and stops before changing anything. Keep the version you want in .agents/skills, delete the other, and run it again.
+- It deletes the old .claude/skills only after every skill in it reads the same through the new link. If one doesn't, for example because a skill in .agents/skills links back into .claude/skills, it puts .claude/skills back and stops.
+
+It's safe to run twice. `scripts/test-link-skills.sh` tests each of these cases, and CI runs it.
 
 Keep skill frontmatter to `name` and `description`, so a skill behaves the same in both tools. Fields like `disable-model-invocation` are documented only for Claude Code. Keep descriptions short too, because Codex caps the initial skill list at about 2% of the context window. The example skill, `pr-description`, drafts a pull request description from the current branch.
 
@@ -55,7 +62,7 @@ Both tools send a PreToolUse event before a shell command, with the command in `
 
 The last two checks come from a real prompt-injection payload, which told Codex to start a child `codex exec --dangerously-bypass-approvals-and-sandbox` and told Claude to change its API base URL. The hook only ever denies. Codex parses "ask" from a hook but doesn't support it yet: it marks the hook as failed and runs the command anyway. The hook needs jq.
 
-`scripts/test-hook.sh` feeds the hook fake events and checks the exact JSON it prints. CI runs it on every push and pull request. CI also runs shellcheck, validates the JSON and TOML files, and checks the skills symlink and the size of AGENTS.md.
+`scripts/test-hook.sh` feeds the hook fake events and checks the exact JSON it prints. CI runs it on every push and pull request. CI also runs shellcheck, validates the JSON and TOML files, checks the skills symlink and the size of AGENTS.md, and runs `scripts/test-link-skills.sh`.
 
 ## Setup
 
@@ -63,7 +70,7 @@ The last two checks come from a real prompt-injection payload, which told Codex 
 2. Replace the example AGENTS.md with your own commands and conventions. Keep it under 32 KiB (`wc -c AGENTS.md`), and don't put imports in it.
 3. Change the npm-specific parts of `.claude/settings.json` to fit your stack: the allow list and `sandbox.network.allowedDomains`.
 4. Add the lines from `.gitignore` to yours. Some global gitignores exclude `.agents`, and then `git add` refuses it. The `!.agents/` line keeps it in the repo.
-5. Run `scripts/link-skills.sh`, then commit.
+5. Run `scripts/link-skills.sh`, then commit. If it lists skills that differ between .claude/skills and .agents/skills, merge each one into .agents/skills and run it again.
 6. Install jq. On Linux, Claude Code's sandbox also needs bubblewrap and socat. With `failIfUnavailable` set, Claude won't start without them.
 7. In Codex, trust the project. `.codex/config.toml` and `.codex/rules` load only in a trusted project. Then open `/hooks` and trust the hook. The trust is tied to the hook definition's hash, so after any change Codex skips the hook until you trust it again. Check what changed before you do.
 8. Start Claude Code from the repo root, and accept the workspace trust dialog. Claude reads `.claude/settings.json` only from the directory you start it in. It applies the allow rules only after you trust the workspace, while the deny and ask rules apply right away.
