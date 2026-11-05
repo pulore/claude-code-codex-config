@@ -7,19 +7,20 @@ The files come from the post [Claude Code and Codex in One Repo: The Config That
 ## What's in it
 
 ```
-AGENTS.md                     shared rules for both agents
-CLAUDE.md                     imports AGENTS.md, plus notes for Claude Code only
-.agents/skills/               skills for both tools
-.claude/skills                symlink to ../.agents/skills
-.claude/settings.json         Claude Code permissions, sandbox and hook
-.codex/config.toml            Codex permissions profile
-.codex/hooks.json             runs the shared hook in Codex
-.codex/rules/default.rules    Codex rules for commands that leave the sandbox
-.agents/hooks/guard-bash.sh   the shared PreToolUse hook
-scripts/link-skills.sh        creates the .claude/skills symlink
-scripts/test-hook.sh          tests the hook
-scripts/test-link-skills.sh   tests link-skills.sh
-.github/workflows/ci.yml      runs the checks on every push and pull request
+AGENTS.md                       shared rules for both agents
+CLAUDE.md                       imports AGENTS.md, plus notes for Claude Code only
+.agents/skills/                 skills for both tools
+.claude/skills                  symlink to ../.agents/skills
+.claude/settings.json           Claude Code permissions, sandbox and hook
+.codex/config.toml              Codex permissions profile
+.codex/hooks.json               runs the shared hook in Codex
+.codex/rules/default.rules      Codex rules for commands that leave the sandbox
+.agents/hooks/guard-bash.sh     the shared PreToolUse hook
+scripts/link-skills.sh          creates the .claude/skills symlink
+scripts/test-hook.sh            tests the hook
+scripts/test-link-skills.sh     tests link-skills.sh
+scripts/check-codex-profile.sh  checks the Codex profile on your machine
+.github/workflows/ci.yml        runs the checks on every push and pull request
 ```
 
 ### AGENTS.md, plus a CLAUDE.md that imports it
@@ -112,7 +113,9 @@ claude doctor
 claude mcp list
 ```
 
-The `cat .env` check only means something when a .env file exists. With one, both commands fail with a permission error ("Operation not permitted" on macOS).
+The `cat .env` check only means something when a .env file exists. With one, both commands fail with a permission error: "Operation not permitted" on macOS, and "Permission denied" for the read and "Read-only file system" for the write on Linux.
+
+`scripts/check-codex-profile.sh` runs these profile checks for you in a throwaway repo, with sentinel files that hold no real values, so you don't need a .env of your own. It fails if a `.env` or `.env.*` file up to three directories below the root is readable, if `.envrc` isn't, or if `.claude/settings.json` or AGENTS.md is writable. Then it reports how much deeper the deny reaches on your machine. It uses its own `CODEX_HOME`, so it doesn't read or change your Codex config. Run it in your own terminal after each Codex upgrade.
 
 Feed the hook a fake event to see it deny, or run all the hook tests:
 
