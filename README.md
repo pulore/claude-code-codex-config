@@ -27,7 +27,7 @@ scripts/check-codex-profile.sh  checks the Codex profile on your machine
 
 AGENTS.md is the one file both tools read, so the build commands and conventions go there. The one here is an example for an npm and TypeScript project. Replace it with your own.
 
-- **AGENTS.md has to stand on its own.** Codex reads one AGENTS.md per directory from the project root down to where you started it, and cuts them off at a combined 32 KiB with no warning. It doesn't expand imports: an `@` line reaches the model as plain text. So every rule is written out in full.
+- **AGENTS.md has to stand on its own.** Codex reads one AGENTS.md per directory from the project root down to where you started it, and cuts them off at a combined 32 KiB: silently before Codex 0.168.0, with a warning since that release (13 Nov 2026). It doesn't expand imports: an `@` line reaches the model as plain text. So every rule is written out in full.
 - **CLAUDE.md is a shim:** `@AGENTS.md`, then a "Claude Code only" section. Since 2.1.277, Claude Code reads AGENTS.md by itself, but under the default setting only when there's no CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md on the path. A teammate's personal CLAUDE.local.md would switch AGENTS.md off for them, and nothing on screen would say so. The docs also say some sessions can't read AGENTS.md directly. The import covers all of these cases and never causes a double read.
 
 ### Skills: one directory and a symlink
