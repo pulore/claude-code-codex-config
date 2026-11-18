@@ -60,12 +60,14 @@ Both tools send a PreToolUse event before a shell command, with the command in `
 - name a .env file, such as `cat .env` or `source .env`, while letting `.envrc` through
 - start an agent with its sandbox, approvals or hook checks turned off (`--dangerously-bypass-approvals-and-sandbox`, `--dangerously-bypass-hook-trust`, `--yolo`, `--dangerously-skip-permissions`)
 - change the model API endpoint (`ANTHROPIC_BASE_URL`, `chatgpt_base_url`, `openai_base_url`)
+- commit with git's own hooks skipped: `git commit --no-verify`, the shortened `--no-veri` and `--no-verif` that git also accepts, and `-n` alone or in a cluster such as `-an`
+- name `hooksPath`, the git setting that says where its hooks are, in any form: `git -c core.hooksPath=...`, `git config`, a `GIT_CONFIG_KEY_*` variable, or a line written into a config file
 
-The last two checks come from a real prompt-injection payload, which told Codex to start a child `codex exec --dangerously-bypass-approvals-and-sandbox` and told Claude to change its API base URL. The hook only ever denies. Codex parses "ask" from a hook but doesn't support it yet: it marks the hook as failed and runs the command anyway. The hook needs jq.
+The second and third checks come from a real prompt-injection payload, which told Codex to start a child `codex exec --dangerously-bypass-approvals-and-sandbox` and told Claude to change its API base URL. The last two are there because a pre-commit hook only helps if a commit can't skip it. On git 2.56, each of those forms committed past a pre-commit hook that always fails. The hook only ever denies. Codex parses "ask" from a hook but doesn't support it yet: it marks the hook as failed and runs the command anyway. The hook needs jq.
 
-It only reads the command's text. A command that reads a .env file without naming one, such as `grep -r API_KEY .` or `cat .e*`, gets past it. Only the sandboxes can stop those, within the limits under [Scope and security notes](#scope-and-security-notes).
+It only reads the command's text. A command that reads a .env file without naming one, such as `grep -r API_KEY .` or `cat .e*`, gets past it. Only the sandboxes can stop those, within the limits under [Scope and security notes](#scope-and-security-notes). The commit checks drop quoted text before they look for flags, and join lines that end in a backslash. So a commit message can mention `-n`, and a flag that comes after a message of several lines is still seen. It also means a flag inside a quoted string, as in `bash -c "git commit --no-verify"`, gets past them. The `hooksPath` check denies any command that contains the word, including one that only reads the setting.
 
-`scripts/test-hook.sh` feeds the hook fake events and checks the exact JSON it prints, including for those two commands that it lets through. CI runs it on every push and pull request. CI also runs shellcheck, validates the JSON and TOML files, checks the skills symlink and the size of AGENTS.md, and runs `scripts/test-link-skills.sh`.
+`scripts/test-hook.sh` feeds the hook fake events and checks the exact JSON it prints, including for the commands that it lets through. CI runs it on every push and pull request. CI also runs shellcheck, validates the JSON and TOML files, checks the skills symlink and the size of AGENTS.md, and runs `scripts/test-link-skills.sh`.
 
 ## Setup
 
@@ -131,6 +133,7 @@ Older docs and releases use `codex sandbox linux --permissions-profile`. Use `co
 ## Scope and security notes
 
 - **The hook is a second layer.** It's a string match, behind the sandboxes. A command that reads a .env file without naming it, such as `grep -r API_KEY .`, gets past the hook, so only the sandboxes can stop it, with the limits below.
+- **The commit checks cover `git commit` only.** They stop the flags that skip a pre-commit or commit-msg hook when the agent types them in a command. They don't look inside a quoted string, a git alias or a script the agent writes and runs, and they don't cover `git push --no-verify`. Keep the checks that matter in CI as well.
 - **The `.env.*` patterns cover `.env.example` too**, in the deny rules, the hook and `.gitignore`. If agents should read an example file, give it a name like `env.example`.
 - **The .env deny covers every process in the sandbox.** A dev server that loads .env fails there too, so start those yourself.
 - **Command rules are prefix matches in both tools.** `git -C . push` matches neither `Bash(git push *)` nor the Codex push rule. Use these rules to cut down on prompts, and rely on the sandbox for anything you need blocked.
